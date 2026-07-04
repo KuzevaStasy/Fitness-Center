@@ -57,4 +57,39 @@ SELECT
     END AS customer_health_status
 FROM usage_stats
 ORDER BY visits_june_2026 DESC;
+```
+### 2. Monthly Recurring Revenue (MRR) & Subscription Split
+**Business Value:** Evaluates which plan tier generates the highest financial stability and its overall percentage contribution to the business turnover.
+```sql
+SELECT 
+    mp.plan_name,
+    COUNT(s.subscription_id) AS active_subscriptions,
+    SUM(mp.monthly_price) AS total_monthly_revenue,
+    ROUND(
+        (SUM(mp.monthly_price) / SUM(SUM(mp.monthly_price)) OVER ()) * 100, 2
+    ) AS revenue_contribution_pct
+FROM subscriptions s
+JOIN membership_plans mp ON s.plan_id = mp.plan_id
+JOIN members m ON s.member_id = m.member_id
+WHERE m.status = 'Active' AND s.payment_status = 'Paid'
+GROUP BY mp.plan_name
+ORDER BY total_monthly_revenue DESC;
+```
+### 3. Peak Hours & Zone Crowding
+Business Value: Ranks the top 3 busiest hours for each zone to help management optimize trainer shifts and plan group class schedules effectively.
+```sql
+SELECT 
+    facility_area,
+    EXTRACT(HOUR FROM check_in_time) AS check_in_hour,
+    COUNT(*) AS total_visits,
+    RANK() OVER (PARTITION BY facility_area ORDER BY COUNT(*) DESC) AS peak_hour_rank
+FROM check_ins
+GROUP BY facility_area, EXTRACT(HOUR FROM check_in_time)
+ORDER BY facility_area, total_visits DESC;
+```
+📈 Key Insights & Future BI Roadmap
+Operational Optimization: Gate data shows massive traffic spikes between 17:00 and 20:00 in the Gym and Cardio zones, allowing management to relocate staff proactively.
 
+Revenue Growth: Highlighting the "Upgrade Target" segment opens a direct path for automated upsell emails.
+
+Next Steps: Connecting this PostgreSQL engine to a data visualization platform to build an interactive operations dashboard.
