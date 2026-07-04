@@ -1,95 +1,61 @@
-# 🏋️‍♂️ Fitness Center Subscription Analytics (SQL & Business Intelligence)
+# 🏋️ Fitness Center Data Analysis Project
 
-## 📌 Project Overview
-This project focuses on providing actionable business intelligence for a modern subscription-based fitness center. By simulating real-world relational data, the project answers critical business questions regarding **customer retention (Churn Risk)**, **Monthly Recurring Revenue (MRR)**, and **facility utilization metrics**.
-
-The primary goal is to help gym management optimize staffing schedules, target marketing campaigns at high-risk users, and maximize revenue growth through data-driven decisions.
-
-## 🛠️ Tech Stack & Database Architecture
-*   **Database Engine:** PostgreSQL
-*   **Database GUI Tool:** DBeaver
-*   **Analytics Techniques:** Common Table Expressions (CTEs), Window Functions, Data Aggregation, and Case Segmentations.
-
-### Entity-Relationship (ER) Schema
-The relational database consists of 4 core tables:
-1.  `membership_plans` - Stores tier details (`Bronze`, `Silver`, `Gold`, `VIP`), monthly prices, and visit limits.
-2.  `members` - Customer profiles including registration dates and their operational status (`Active`, `Cancelled`, `Suspended`).
-3.  `subscriptions` - Tracks transaction cycles, end dates, and payment success rates.
-4.  `check_ins` - Real-time gate logs recording the timestamp and exact zone (`Gym`, `Cardio`, `Pool`, `Group Class`) for every visit.
+This project focuses on extracting, transforming, and visualizing operational and financial data from a fitness center database. The objective is to convert raw transactional records into actionable business insights regarding membership sales, gym attendance patterns, and revenue distribution.
 
 ---
 
-## 📊 Business Metrics & Advanced Queries
+## 📊 Business Intelligence Dashboard
 
-### 1. Utilization & Churn Risk Analysis
-**Business Value:** Identifies passive paying customers who are at a high risk of canceling their subscription next month, while highlighting users ready for a tier upgrade.
+Below is the interactive dashboard developed in **Google Looker Studio**, which serves as the visual and analytical layer of this project:
 
+![Fitness Center Dashboard](dashboard.png)
+
+---
+
+## 🔑 Key Performance Indicators & Visualizations Included
+
+* **Total Active Members:** A real-time scorecard displaying the total number of gym members with an active membership status.
+* **Monthly Revenue (MRR):** A financial KPI scorecard showing the total monthly recurring revenue generated from successfully paid subscriptions (`payment_status = 'Paid'`).
+* **Monthly Revenue by Plan:** A dynamic Donut Chart illustrating the revenue distribution percentage across the 4 main membership tiers (*Bronze, Silver, Gold, VIP*), highlighting which plan drives the highest profit.
+* **Hourly Activity (Peak Hours Analysis):** A 24-hour Bar Chart displaying the distribution of member check-ins throughout the day. This visualization effectively identifies peak attendance hours (such as the late afternoon rush between 16:00 and 17:00) to assist with gym staffing and resource planning.
+
+---
+
+## 🛠️ Tech Stack & Data Pipeline Architecture
+
+1. **Database Layer (PostgreSQL):** Raw transactional data regarding members, plans, payments, and check-ins was hosted and queried using PostgreSQL.
+2. **Extract & Transform (SQL & DBeaver):** Advanced SQL queries utilizing relational joins, conditional filtering, aggregations, and date/time extractions (`EXTRACT(HOUR FROM check_in_time)`) were designed and optimized to generate clean reporting tables.
+3. **Load & Data Warehouse Layer (Google Sheets):** The structured query results were exported into dedicated spreadsheet reports (`mrr_report`, `check_ins_report`) to serve as a stable data source.
+4. **Visualization Layer (Google Looker Studio):** Fields were strictly cast into appropriate data types (`Numeric` and `Currency` configurations) to ensure precise, bug-free dynamic visualizations and seamless reporting.
+
+---
+
+## 📜 Core SQL Queries Used
+
+### 1. Active Members KPI
 ```sql
-WITH usage_stats AS (
-    SELECT 
-        m.member_id,
-        CONCAT(m.first_name, ' ', m.last_name) AS member_name,
-        mp.plan_name,
-        mp.included_visits_per_month,
-        COUNT(c.check_in_id) AS visits_june_2026
-    FROM members m
-    JOIN subscriptions s ON m.member_id = s.member_id
-    JOIN membership_plans mp ON s.plan_id = mp.plan_id
-    LEFT JOIN check_ins c ON m.member_id = c.member_id 
-        AND c.check_in_time >= '2026-06-01' AND c.check_in_time < '2026-07-01'
-    WHERE m.status = 'Active'
-    GROUP BY m.member_id, m.first_name, m.last_name, mp.plan_name, mp.included_visits_per_month
-)
-SELECT 
-    member_id,
-    member_name,
-    plan_name,
-    visits_june_2026,
-    CASE 
-        WHEN included_visits_per_month = 999 THEN 'Unlimited'
-        ELSE CAST(included_visits_per_month AS VARCHAR)
-    END AS monthly_limit,
-    CASE 
-        WHEN included_visits_per_month <> 999 AND visits_june_2026 >= included_visits_per_month THEN 'Upgrade Target'
-        WHEN visits_june_2026 <= 1 THEN 'High Churn Risk'
-        WHEN visits_june_2026 > 15 THEN 'Highly Engaged'
-        ELSE 'Healthy Retention'
-    END AS customer_health_status
-FROM usage_stats
-ORDER BY visits_june_2026 DESC;
+SELECT COUNT(*) AS active_members 
+FROM members 
+WHERE status = 'Active';
 ```
-### 2. Monthly Recurring Revenue (MRR) & Subscription Split
-**Business Value:** Evaluates which plan tier generates the highest financial stability and its overall percentage contribution to the business turnover.
+2. Monthly Revenue by Plan (MRR)
 ```sql
 SELECT 
     mp.plan_name,
     COUNT(s.subscription_id) AS active_subscriptions,
-    SUM(mp.monthly_price) AS total_monthly_revenue,
-    ROUND(
-        (SUM(mp.monthly_price) / SUM(SUM(mp.monthly_price)) OVER ()) * 100, 2
-    ) AS revenue_contribution_pct
+    SUM(mp.monthly_price) AS total_monthly_revenue
 FROM subscriptions s
 JOIN membership_plans mp ON s.plan_id = mp.plan_id
 JOIN members m ON s.member_id = m.member_id
 WHERE m.status = 'Active' AND s.payment_status = 'Paid'
-GROUP BY mp.plan_name
-ORDER BY total_monthly_revenue DESC;
+GROUP BY mp.plan_name;
 ```
-### 3. Peak Hours & Zone Crowding
-Business Value: Ranks the top 3 busiest hours for each zone to help management optimize trainer shifts and plan group class schedules effectively.
+3. Peak Hours Analysis (Hourly Check-ins)
 ```sql
 SELECT 
-    facility_area,
     EXTRACT(HOUR FROM check_in_time) AS check_in_hour,
-    COUNT(*) AS total_visits,
-    RANK() OVER (PARTITION BY facility_area ORDER BY COUNT(*) DESC) AS peak_hour_rank
+    COUNT(*) AS total_visits
 FROM check_ins
-GROUP BY facility_area, EXTRACT(HOUR FROM check_in_time)
-ORDER BY facility_area, total_visits DESC;
+GROUP BY check_in_hour
+ORDER BY check_in_hour;
 ```
-📈 Key Insights & Future BI Roadmap
-Operational Optimization: Gate data shows massive traffic spikes between 17:00 and 20:00 in the Gym and Cardio zones, allowing management to relocate staff proactively.
-
-Revenue Growth: Highlighting the "Upgrade Target" segment opens a direct path for automated upsell emails.
-
-Next Steps: Connecting this PostgreSQL engine to a data visualization platform to build an interactive operations dashboard.
